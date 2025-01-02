@@ -1,20 +1,21 @@
 import base64
 from abc import ABC, abstractmethod
 
-
 from Crypto.Cipher import AES, PKCS1_OAEP
 from Crypto.PublicKey import RSA
 from Crypto.Random import get_random_bytes
 
 
-
 class Encryptor(ABC):
+
+    ENCODING_STD = 'utf-8'
+
     @abstractmethod
-    def encrypt(self, key: bytes, content: bytes):
+    def encrypt(self, key: bytes, content: str) -> str:
         pass
 
     @abstractmethod
-    def decrypt(self, key: bytes, content: str):
+    def decrypt(self, key: bytes, content: str) -> str:
         pass
 
 
@@ -24,27 +25,21 @@ class EncryptorAES(Encryptor):
         self._used_nonce = None
 
     # Encrypt with AES in CTR mode
-    def encrypt(self, key: bytes, content: bytes) -> str:
-        # create a unique nonce
+    def encrypt(self, key: bytes, content: str) -> str:
+
         nonce = get_random_bytes(8)
+        cipher = AES.new(key, AES.MODE_CTR, nonce=nonce)
+        self._used_nonce = cipher.nonce  # update the last used nonce.
+        ciphertext = cipher.encrypt(content.encode(self.ENCODING_STD))
 
-        # create a cipher with desired mode
-        cipher = AES.new(key, AES.MODE_CTR,nonce=nonce)
-
-        # update the last used nonce
-        self._used_nonce = cipher.nonce
-
-        # encrypt
-        ciphertext = cipher.encrypt(content)
-
-        return base64.b64encode(cipher.nonce + ciphertext).decode()
+        return base64.b64encode(cipher.nonce + ciphertext).decode(self.ENCODING_STD)
 
     # Decrypt with AES in CTR mode
-    def decrypt(self, key: bytes, content: str) -> bytes:
+    def decrypt(self, key: bytes, content: str) -> str:
         raw = base64.b64decode(content)
         nonce, ciphertext = raw[:8], raw[8:]
         cipher = AES.new(key, AES.MODE_CTR, nonce=nonce)
-        return cipher.decrypt(ciphertext)
+        return cipher.decrypt(ciphertext).decode(self.ENCODING_STD)
 
     def get_used_nonce(self) -> bytes:
         return self._used_nonce
@@ -52,15 +47,14 @@ class EncryptorAES(Encryptor):
 
 class EncryptorRSA(Encryptor):
 
-    def encrypt(self,key: bytes, content: bytes):
-
+    def encrypt(self, key: bytes, content: str) -> str:
         rsa_key = RSA.import_key(key)
-        cipher_rsa = PKCS1_OAEP.new(rsa_key)
-        return base64.b64encode(cipher_rsa.encrypt(content)).decode()
+        cipher = PKCS1_OAEP.new(rsa_key)
+        ciphertext = cipher.encrypt(content.encode(self.ENCODING_STD))
+        return base64.b64encode(ciphertext).decode(self.ENCODING_STD)
 
-    def decrypt(self,key: bytes, content: str):
-
+    def decrypt(self, key: bytes, content: str) -> str:
         rsa_key = RSA.import_key(key)
-        cipher_rsa = PKCS1_OAEP.new(rsa_key)
-        return cipher_rsa.decrypt(base64.b64decode(content))
-
+        cipher = PKCS1_OAEP.new(rsa_key)
+        decrypted_bytes = cipher.decrypt(base64.b64decode(content))
+        return decrypted_bytes.decode(self.ENCODING_STD)
