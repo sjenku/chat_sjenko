@@ -6,15 +6,14 @@ from Utils.internal_logger import InternalLogger
 
 
 class ServerRunner(CommunicationService):
-
-    _logger:InternalLogger
-    _clients:list[socket]
+    _logger: InternalLogger
+    _clients: list[socket]
 
     def __init__(self):
         self._logger = InternalLogger()
         self._clients = []
 
-    def handle_msg_receiving(self,sock,address):
+    def handle_msg_receiving(self, sock, address):
         self._logger.info("Server handle message")
         # Receive encrypted message and HMAC from the server
         data = sock.recv(1024)

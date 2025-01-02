@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 class CommunicationService(ABC):
 
     @abstractmethod
-    def handle_msg_receiving(self,socket,address):
+    def handle_msg_receiving(self, socket, address):
         pass
 
     @abstractmethod
@@ -12,5 +12,5 @@ class CommunicationService(ABC):
         pass
 
     @abstractmethod
-    def send_msg(self,destination, content):
+    def send_msg(self, destination, content):
         pass

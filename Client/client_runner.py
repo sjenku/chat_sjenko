@@ -5,8 +5,7 @@ from Utils.internal_logger import InternalLogger
 
 
 class ClientRunner(CommunicationService):
-
-    _logger:InternalLogger
+    _logger: InternalLogger
 
     def __init__(self):
         self._logger = InternalLogger()
@@ -18,7 +17,7 @@ class ClientRunner(CommunicationService):
     def prepare_msg_for_sending(self):
         pass
 
-    def send_msg(self, sock:socket, content):
+    def send_msg(self, sock: socket, content):
         try:
             # Send data
             sock.sendall(content)
@@ -34,9 +33,9 @@ class ClientRunner(CommunicationService):
         except ValueError as e:
             print(f"Value error: {e}")
 
-    def connect_to_server(self,host:str,port:int,sock:socket):
+    def connect_to_server(self, host: str, port: int, sock: socket):
         try:
-            sock.connect((host,port))
+            sock.connect((host, port))
         except ConnectionRefusedError:
             self._logger.error("Connection refused. Is the server running?")
         except TimeoutError:
@@ -52,8 +51,8 @@ class ClientRunner(CommunicationService):
         port = 12345
 
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.connect_to_server(host=host,port=port,sock=s)
-        self.send_msg(sock=s,content=b"Hello World!!!")
+        self.connect_to_server(host=host, port=port, sock=s)
+        self.send_msg(sock=s, content=b"Hello World!!!")
 
         s.close()
 
@@ -61,4 +60,3 @@ class ClientRunner(CommunicationService):
 if __name__ == "__main__":
     client_runner = ClientRunner()
     client_runner.start()
-
