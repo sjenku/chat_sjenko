@@ -1,7 +1,9 @@
 from datetime import time
 
+from Server.DB.table_row import TableRow
 
-class PendingMessageTableRow:
+
+class PendingMessageTableRow(TableRow):
     def __init__(self,
                  uid: str,
                  des_uid: str,

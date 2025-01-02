@@ -1,7 +1,9 @@
 from datetime import time
 
+from Server.DB.table_row import TableRow
 
-class RegistrationTableRow:
+
+class RegistrationTableRow(TableRow):
     def __init__(self,
                  uid: str,
                  sent_opt: bool,
