@@ -1,97 +1,66 @@
 import base64
 from abc import ABC, abstractmethod
-from enum import Enum
 
-from Crypto.Cipher import AES
+
+from Crypto.Cipher import AES, PKCS1_OAEP
+from Crypto.PublicKey import RSA
+from Crypto.Random import get_random_bytes
+
 
 
 class Encryptor(ABC):
     @abstractmethod
-    def encrypt(self, content: bytes):
+    def encrypt(self, key: bytes, content: bytes):
         pass
 
     @abstractmethod
-    def decrypt(self, content: bytes):
+    def decrypt(self, key: bytes, content: str):
         pass
-
-
-class EncryptorAESKeyEnum(str, Enum):
-    AES_KEY = "aes_key"
-    ENC_KEY = "enc_key"
-    HMAC_KEY = "hmac_key"
 
 
 class EncryptorAES(Encryptor):
 
     def __init__(self):
-        self._key = None
-        self._enc_key = None
-        self._hmac_key = None
-        self._current_enc_key = None
-
-    @property
-    def key(self):
-        raise AttributeError("You cannot access the key directly.")
-
-    @key.setter
-    def key(self, value):
-        if not value:
-            raise ValueError("Name cannot be empty")
-        self._key = value
-
-        # split the key and create one key for encryption and another for hmac
-        enc_key, hmac_key = self._split_aes_key()
-        self._enc_key = enc_key
-        self._hmac_key = hmac_key
+        self._used_nonce = None
 
     # Encrypt with AES in CTR mode
-    def encrypt(self, content: bytes):
-        cipher = AES.new(self._current_enc_key, AES.MODE_CTR)
+    def encrypt(self, key: bytes, content: bytes) -> str:
+        # create a unique nonce
+        nonce = get_random_bytes(8)
+
+        # create a cipher with desired mode
+        cipher = AES.new(key, AES.MODE_CTR,nonce=nonce)
+
+        # update the last used nonce
+        self._used_nonce = cipher.nonce
+
+        # encrypt
         ciphertext = cipher.encrypt(content)
-        cipher.nonce = b'5'
+
         return base64.b64encode(cipher.nonce + ciphertext).decode()
 
     # Decrypt with AES in CTR mode
-    def decrypt(self, content: bytes):
+    def decrypt(self, key: bytes, content: str) -> bytes:
         raw = base64.b64decode(content)
-        nonce, ciphertext = raw[:16], raw[16:]
-        cipher = AES.new(self._current_enc_key, AES.MODE_CTR, nonce=nonce)
+        nonce, ciphertext = raw[:8], raw[8:]
+        cipher = AES.new(key, AES.MODE_CTR, nonce=nonce)
         return cipher.decrypt(ciphertext)
 
-    def _split_aes_key(self):
-        key_enc = self._key[:16]  # First 16 bytes for encryption
-        key_hmac = self._key[16:]  # Last 16 bytes for HMAC
-        return key_enc, key_hmac
+    def get_used_nonce(self) -> bytes:
+        return self._used_nonce
 
 
 class EncryptorRSA(Encryptor):
 
-    def __init__(self):
-        self._private_key = None
-        self._public_key = None
+    def encrypt(self,key: bytes, content: bytes):
 
-    @property
-    def private_key(self):
-        raise AttributeError("You cannot access the key directly.")
+        rsa_key = RSA.import_key(key)
+        cipher_rsa = PKCS1_OAEP.new(rsa_key)
+        return base64.b64encode(cipher_rsa.encrypt(content)).decode()
 
-    @property
-    def public_key(self):
-        raise AttributeError("You cannot access the key directly.")
+    def decrypt(self,key: bytes, content: str):
 
-    @private_key.setter
-    def private_key(self, value: str):
-        if not value:
-            raise ValueError("Name cannot be empty")
-        self._private_key = value
+        rsa_key = RSA.import_key(key)
+        cipher_rsa = PKCS1_OAEP.new(rsa_key)
+        return cipher_rsa.decrypt(base64.b64decode(content))
 
-    @public_key.setter
-    def public_key(self, value: str):
-        if not value:
-            raise ValueError("Name cannot be empty")
-        self._public_key = value
-
-    def encrypt(self, content: str):
-        pass
-
-    def decrypt(self, content: str):
-        pass
