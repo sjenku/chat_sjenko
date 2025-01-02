@@ -1,14 +1,19 @@
 import socket
+from typing import Optional
 
+from Client.client_info import ClientInfo
 from Communication.communication_service import CommunicationService
 from Utils.internal_logger import InternalLogger
 
 
 class ClientRunner(CommunicationService):
-    _logger: InternalLogger
 
-    def __init__(self):
-        self._logger = InternalLogger()
+    def __init__(self, client: ClientInfo = None):
+        self._logger: InternalLogger = InternalLogger()
+        self.client_info: Optional[ClientInfo] = client
+        self._aes_key: Optional[str] = None
+        self._rsa_private_key: Optional[str] = None
+        self._rsa_public_key: Optional[str] = None
 
     def handle_msg_receiving(self, n_socket, address):
         self._logger.info("Server handle message")
@@ -58,5 +63,6 @@ class ClientRunner(CommunicationService):
 
 
 if __name__ == "__main__":
+    client_info = ClientInfo(uid="05012345678",name="Bob")
     client_runner = ClientRunner()
     client_runner.start()
