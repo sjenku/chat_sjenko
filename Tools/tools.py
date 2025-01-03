@@ -11,7 +11,7 @@ class Tools:
         key = RSA.generate(2048)
         private_key = key.export_key()
         public_key = key.publickey().export_key()
-        return private_key, public_key
+        return private_key.decode(), public_key.decode()
 
     # AES Key Generation
     @staticmethod

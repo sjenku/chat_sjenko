@@ -1,6 +1,9 @@
+import json
+import logging
 import socket
 import threading
 
+from Communication.Messages.messages import ClientRegistrationMessage
 from Communication.communication_service import CommunicationService
 from Utils.internal_logger import InternalLogger
 
@@ -10,17 +13,27 @@ class ServerRunner(CommunicationService):
     _clients: list[socket]
 
     def __init__(self):
-        self._logger = InternalLogger()
+        self._logger = InternalLogger(logging_level=logging.DEBUG)
         self._clients = []
 
     def handle_msg_receiving(self, sock, address):
         self._logger.info("Server handle message")
         # Receive encrypted message and HMAC from the server
-        data = sock.recv(1024)
-        if not data:
+        raw_data = sock.recv(1024)
+        if not raw_data:
             self._logger.warn("Connection closed by the server")
         else:
-            print(data)
+            message = json.loads(raw_data)
+            message_type = message.get("type")
+            data = message.get("data")
+            client_msg = ClientRegistrationMessage(**data)
+            print(f"uid = {client_msg.uid}, public_key = {client_msg.public_key}")
+
+            # if message_type in message_handlers:
+            #     message_handlers[message_type](data)
+            # else:
+            #     print(f"Unknown message type: {message_type}")
+            # print(data)
 
     def prepare_msg_for_sending(self):
         self._logger.info("Server preparing message")

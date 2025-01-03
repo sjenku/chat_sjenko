@@ -1,4 +1,5 @@
 import logging
+import os
 
 
 class ColoredFormatter(logging.Formatter):
@@ -19,10 +20,11 @@ class ColoredFormatter(logging.Formatter):
 
 
 class InternalLogger:
-    def __init__(self):
+    def __init__(self,logging_level:int):
         # Create a logger
         self._logger = logging.getLogger("Logger")
-        self._logger.setLevel(logging.DEBUG)  # Set the desired logging level
+
+        self._logger.setLevel(logging_level)  # Set the desired logging level
 
         # Create a console handler (output to console)
         console_handler = logging.StreamHandler()
