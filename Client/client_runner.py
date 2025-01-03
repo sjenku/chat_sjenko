@@ -1,6 +1,7 @@
 import json
 import logging
 import socket
+import threading
 from enum import Enum
 
 from typing import Optional
@@ -25,7 +26,7 @@ class ClientRunnerStatusEnum(str, Enum):
 class ClientRunner(CommunicationService):
 
     def __init__(self):
-        self._logger: InternalLogger = InternalLogger(logging_level=logging.WARN)
+        self._logger: InternalLogger = InternalLogger(logging_level=logging.DEBUG)
         self.client_info: Optional[ClientInfo] = None
         self._aes_key: Optional[str] = None
         self._rsa_private_key: Optional[str] = None
@@ -34,48 +35,44 @@ class ClientRunner(CommunicationService):
         self._status = ClientRunnerStatusEnum.REGISTRATION
 
     def handle_msg_receiving(self, n_socket, address):
-        self._logger.info("Server handle message")
-        # Receive encrypted message and HMAC from the server
-        raw_data = n_socket.recv(1024)
-        if not raw_data:
-            self._logger.warn("Connection closed by the server")
-        else:
-            message = json.loads(raw_data)
-            message_type = message.get("type")
-            data = message.get("data")
+        self._logger.info("Client handle message")
+        while True:  # Continuous loop to keep receiving messages
+            raw_data = n_socket.recv(1024)
+            if not raw_data:
+                self._logger.warn("Connection closed by the server")
+            else:
+                message = json.loads(raw_data)
+                message_type = message.get("type")
+                data = message.get("data")
 
-            if message_type == CommunicationMessageTypesEnum.OPT_MESSAGE:
-                opt_message = OptMessage(**data)
-                self.handle_opt_msg_receiving(opt_message=opt_message, n_socket=n_socket)
+                if message_type == CommunicationMessageTypesEnum.OPT_MESSAGE:
+                    opt_message = OptMessage(**data)
+                    self.handle_opt_msg_receiving(opt_message=opt_message, n_socket=n_socket)
 
-            if message_type == CommunicationMessageTypesEnum.KEY_MESSAGE:
-                key_message = KeyMessage(**data)
-                self.handle_key_msg_receiving(key_message=key_message, n_socket=n_socket)
+                if message_type == CommunicationMessageTypesEnum.KEY_MESSAGE:
+                    key_message = KeyMessage(**data)
+                    self.handle_key_msg_receiving(key_message=key_message, n_socket=n_socket)
 
-            if message_type == CommunicationMessageTypesEnum.CONTENT_MESSAGE:
-                content_message = ContentMessage(**data)
-                self.handle_content_message(content_message=content_message)
+                if message_type == CommunicationMessageTypesEnum.CONTENT_MESSAGE:
+                    content_message = ContentMessage(**data)
+                    self.handle_content_msg(content_message=content_message)
 
-            client_msg = ClientRegistrationMessage(**data)
-            print(f"uid = {client_msg.uid}, public_key = {client_msg.public_key}")
 
     def handle_opt_msg_receiving(self, opt_message: OptMessage, n_socket: socket):
-
+        self._logger.info(f"received from server OPT = {opt_message.opt}")
         # check first that we actually waiting for opt, if not write an error
         if self._status != ClientRunnerStatusEnum.WAIT_FOR_OPT:
             self._logger.error("The Client not waiting for OPT!")
             return
 
-        self._logger.info(f"received from server OPT = {opt_message.opt}")
+        # change the status
+        self._status = ClientRunnerStatusEnum.WAIT_FOR_SERVER_PUBLIC_KEY
 
         # resend opt message to server as approve that this client.
         self.send_msg(n_socket, opt_message.encode())
 
-        # change the status
-        self._status = ClientRunnerStatusEnum.WAIT_FOR_SERVER_PUBLIC_KEY
-
     def handle_key_msg_receiving(self, key_message: KeyMessage, n_socket: socket):
-
+        self._logger.info("Received key message.")
         # check we waiting for server's public key
         if self._status != ClientRunnerStatusEnum.WAIT_FOR_SERVER_PUBLIC_KEY:
             self._logger.error("Client not waiting for server's public key")
@@ -88,13 +85,15 @@ class ClientRunner(CommunicationService):
         encryptor_rsa = EncryptorRSA()
         encrypted_key = encryptor_rsa.encrypt(key=self._server_public_key.encode(EncryptorRSA.ENCODING_STD),
                                               content=self._aes_key)
+
         message_to_send = KeyMessage(key=encrypted_key)  # message with the client's encrypted AES key
-        self.send_msg(sock=n_socket, content=message_to_send.encode())
 
         self._status = ClientRunnerStatusEnum.COMPLETED_REGISTRATION
+        self.send_msg(sock=n_socket, content=message_to_send.encode())
 
-    def handle_content_message(self, content_message: ContentMessage):
 
+    def handle_content_msg(self, content_message: ContentMessage):
+        self._logger.info("Received content message.")
         # check registration completed
         if self._status != ClientRunnerStatusEnum.COMPLETED_REGISTRATION:
             self._logger.error("The registration not completed for this Client.")
@@ -143,18 +142,23 @@ class ClientRunner(CommunicationService):
 
         name = input(ClientOutputsEnum.INSERT_NAME.value)  # todo: check valid input
         uid = input(ClientOutputsEnum.INSERT_UID.value)  # todo: check valid input
-        # name = "Jenia"
-        # uid = "123456789"
         self.client_info = ClientInfo(uid=uid, name=name)
 
         self._rsa_private_key, self._rsa_public_key = Tools.generate_rsa_keys()
+
+        # set status to wait from OPT from the server
+        self._status = ClientRunnerStatusEnum.WAIT_FOR_OPT
 
         # send to server Client's public key and uid
         message = ClientRegistrationMessage(uid=uid, public_key=self._rsa_public_key)
         self.send_msg(sock=sock, content=message.encode())
 
     def start(self):
-        self._logger.info("Client runner start")
+
+        # generate client's keys
+        self._rsa_private_key,self._rsa_public_key = Tools.generate_rsa_keys()
+        self._aes_key = Tools.generate_aes_key()
+        self._logger.info(f"Aes key = {self._aes_key}")
 
         # prompt to console
         print(ClientOutputsEnum.WELCOME.value)
@@ -179,8 +183,28 @@ class ClientRunner(CommunicationService):
         # connect to the server
         self.connect_to_server(host=host, port=port, sock=s)
 
+        # start a thread that will handle message receiving
+        message_thread = threading.Thread(target=self.handle_msg_receiving, args=(s, (host, port)))
+        message_thread.start()
+
         # if we reached here, means user want start registration
         self.start_registration(sock=s)
+
+        # wait here till the registration not completed
+        while self._status != ClientRunnerStatusEnum.COMPLETED_REGISTRATION:
+            pass
+        print(ClientOutputsEnum.REGISTRATION_COMPLETED.value)
+
+        # print to the Client that now able to send message
+        print(ClientOutputsEnum.CAN_SEND_MESSAGE.value)
+
+        # Keep the main thread alive while handling incoming messages
+        try:
+            while True:
+                pass
+        except KeyboardInterrupt:
+            self._logger.info("Client shutting down")
+            s.close()
 
         s.close()
 

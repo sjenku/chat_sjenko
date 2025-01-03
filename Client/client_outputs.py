@@ -7,4 +7,6 @@ class ClientOutputsEnum(str, Enum):
     EXIT = "Thank you, see you next time."
     INSERT_NAME = "Please insert your name:"
     INSERT_UID = "Please insert your phone number:"
+    REGISTRATION_COMPLETED = "Hey! Good news, the registration completed"
+    CAN_SEND_MESSAGE = "To send a message write the message and press Enter"
 

@@ -1,3 +1,5 @@
+import base64
+
 from Crypto.Hash import HMAC, SHA256
 from Crypto.PublicKey import RSA
 from Crypto.Random import get_random_bytes
@@ -15,8 +17,9 @@ class Tools:
 
     # AES Key Generation
     @staticmethod
-    def generate_aes_key() -> bytes:
-        return get_random_bytes(32)
+    def generate_aes_key() -> str:
+        random_bytes = get_random_bytes(32)
+        return base64.b64encode(random_bytes).decode()  # Encodes to Base64 and then decodes to UTF-8
 
     @staticmethod
     def _split_aes_key(aes_key: bytes) -> (bytes,bytes):
