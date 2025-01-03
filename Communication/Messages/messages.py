@@ -5,9 +5,8 @@ from enum import Enum
 
 # all supported types for messages between server and client and vise versa.
 class CommunicationMessageTypesEnum(str,Enum):
-    CLIENT_CONTENT_MESSAGE = "client_content_message"
+    CONTENT_MESSAGE = "content_message"
     CLIENT_REGISTRATION_MESSAGE = "client_registration_message"
-    SERVER_CONTENT_MESSAGE = "server_content_message"
     KEY_MESSAGE = "key_message"
     OPT_MESSAGE = "opt_message"
     ACK_MESSAGE = "ack_message"
@@ -19,7 +18,7 @@ class CommunicationMessage(ABC):
     def to_dict(self):
         pass
 
-    def content(self) -> bytes:
+    def encode(self) -> bytes:
         data = self.to_dict()
         serialized_message = json.dumps(data)
         content = serialized_message.encode()
@@ -31,37 +30,21 @@ class ContentMessage(CommunicationMessage):
 
     def __init__(self,
                  uid: str,
+                 des_uid: str,
                  nonce: int,
                  content: str,
                  hmac: str,
                  signature: str):
         self.uid = uid
+        self.des_uid = des_uid
         self.nonce = nonce
         self.content = content
         self.hmac = hmac
         self.signature = signature
 
     def to_dict(self):
-        pass
-        # this message will not be passed
-
-
-class ClientContentMessage(ContentMessage):
-    """Messages sent from Client to Server."""
-
-    def __init__(self,
-                 des_uid: str,
-                 uid: str,
-                 nonce: int,
-                 content: str,
-                 hmac: str,
-                 signature: str):
-        super().__init__(uid, nonce, content, hmac, signature)
-        self.des_uid = des_uid
-
-    def to_dict(self):
         return {
-            "type": CommunicationMessageTypesEnum.CLIENT_CONTENT_MESSAGE,
+            "type": CommunicationMessageTypesEnum.CONTENT_MESSAGE,
             "data": self.__dict__.copy()
         }
 
@@ -79,18 +62,6 @@ class ClientRegistrationMessage(CommunicationMessage):
             "data": self.__dict__.copy()
         }
 
-
-class ServerContentMessage(ContentMessage):
-    """Message sent from server to Client."""
-
-    def __init__(self, uid: str, nonce: int, content: str, hmac: str, signature: str):
-        super().__init__(uid, nonce, content, hmac, signature)
-
-    def to_dict(self):
-        return {
-            "type": CommunicationMessageTypesEnum.SERVER_CONTENT_MESSAGE,
-            "data": self.__dict__.copy()
-        }
 
 
 class KeyMessage(CommunicationMessage):

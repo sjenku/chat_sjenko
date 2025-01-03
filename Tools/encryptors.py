@@ -26,7 +26,6 @@ class EncryptorAES(Encryptor):
 
     # Encrypt with AES in CTR mode
     def encrypt(self, key: bytes, content: str) -> str:
-
         nonce = get_random_bytes(8)
         cipher = AES.new(key, AES.MODE_CTR, nonce=nonce)
         self._used_nonce = cipher.nonce  # update the last used nonce.

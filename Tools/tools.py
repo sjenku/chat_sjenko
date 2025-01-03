@@ -7,7 +7,7 @@ class Tools:
 
     # RSA Key Pair generation
     @staticmethod
-    def generate_rsa_keys():
+    def generate_rsa_keys() -> (str,str):
         key = RSA.generate(2048)
         private_key = key.export_key()
         public_key = key.publickey().export_key()
@@ -15,13 +15,13 @@ class Tools:
 
     # AES Key Generation
     @staticmethod
-    def generate_aes_key():
+    def generate_aes_key() -> bytes:
         return get_random_bytes(32)
 
     @staticmethod
-    def _split_aes_key(self):
-        key_enc = self._key[:16]  # First 16 bytes for encryption
-        key_hmac = self._key[16:]  # Last 16 bytes for HMAC
+    def _split_aes_key(aes_key: bytes) -> (bytes,bytes):
+        key_enc = aes_key[:16]  # First 16 bytes for encryption
+        key_hmac = aes_key[16:]  # Last 16 bytes for HMAC
         return key_enc, key_hmac
 
     # Generate HMAC
