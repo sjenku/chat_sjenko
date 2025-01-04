@@ -31,13 +31,11 @@ class ContentMessage(CommunicationMessage):
     def __init__(self,
                  uid: str,
                  des_uid: str,
-                 nonce: int,
                  content: str,
                  hmac: str,
                  signature: str):
         self.uid = uid
         self.des_uid = des_uid
-        self.nonce = nonce
         self.content = content
         self.hmac = hmac
         self.signature = signature

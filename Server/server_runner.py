@@ -23,6 +23,7 @@ class ServerRunner(CommunicationService):
         self._private_key:Optional[str] = None
         self._public_key:Optional[str] = None
         self._clients:list[socket] = []
+        self._uid_socket:dict[str, socket] = {}
         self._db = DataBase()
     def handle_msg_receiving(self, sock, address):
         self._logger.info("Server handle message")
@@ -54,6 +55,8 @@ class ServerRunner(CommunicationService):
 
     def handle_client_registration_msg_receiving(self,client_reg_message:ClientRegistrationMessage,sock:socket):
         self._logger.info("Received Client Registration msg")
+        # bind the socket to the uid
+        self._uid_socket[client_reg_message.uid] = sock
 
         # add client to the registration_table
         success = self._db.registration_table.add_row(RegistrationTableRow(uid=client_reg_message.uid))
@@ -68,7 +71,7 @@ class ServerRunner(CommunicationService):
 
         # update the registration_table with info that client provided the public key
         registration_row = self._db.registration_table.find_by_uid(client_reg_message.uid)
-        registration_row.rec_pub_key = True
+        registration_row.recieved_pub_key = True
         self._db.registration_table.update_row(registration_row)
 
         # send to the client opt
@@ -78,6 +81,7 @@ class ServerRunner(CommunicationService):
 
         # update the time of the opt that sent
         registration_row.opt_time = datetime.now()
+        registration_row.sent_opt = True
         self._db.registration_table.update_row(registration_row)
 
     def handle_opt_msg_receiving(self,opt_message:OptMessage,sock:socket):
@@ -128,15 +132,22 @@ class ServerRunner(CommunicationService):
         user_key_row.aes_key = key_message.key
         self._db.user_key_table.update_row(user_key_row)
 
-
     def handle_content_message(self,content_message:ContentMessage):
         self._logger.info("Received Content Message")
         # check if the user passed the registration
-            # if does, check if the des_uid registered.
-                # if does, send message to des_uid
+        registration_row_client_from = self._db.registration_table.find_by_uid(content_message.uid)
+        registration_row_client_to = self._db.registration_table.find_by_uid(content_message.des_uid)
 
+        if not registration_row_client_from or not registration_row_client_from.passed_registration:
+            self._logger.error(f"Client with uid = {content_message.uid} not registered.")
+            return
+        if not registration_row_client_to or not registration_row_client_to.passed_registration:
+            self._logger.error(f"Client that message need to be delivered to with uid = "
+                               f"{content_message.des_uid} not registered.")
+            return
 
-        pass
+        # if both registered send message
+        self.send_msg(sock=self._uid_socket[content_message.des_uid],content=content_message.encode())
 
     def prepare_msg_for_sending(self):
         self._logger.info("Server preparing message")

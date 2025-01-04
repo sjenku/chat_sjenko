@@ -10,6 +10,9 @@ class TableRow:
             return self._uid == other._uid
         return False
 
+    def __str__(self):
+        return self.__dict__.__str__()
+
 
 class UserKeyTableRow(TableRow):
     def __init__(self, uid: str, aes_key: str = "", public_key: str = ""):

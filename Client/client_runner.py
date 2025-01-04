@@ -32,6 +32,7 @@ class ClientRunner(CommunicationService):
         self._rsa_private_key: Optional[str] = None
         self._rsa_public_key: Optional[str] = None
         self._server_public_key: Optional[str] = None
+        self._uid = ""
         self._status = ClientRunnerStatusEnum.REGISTRATION
 
     def handle_msg_receiving(self, n_socket, address):
@@ -144,6 +145,7 @@ class ClientRunner(CommunicationService):
 
         name = input(ClientOutputsEnum.INSERT_NAME.value)  # todo: check valid input
         uid = input(ClientOutputsEnum.INSERT_UID.value)  # todo: check valid input
+        self._uid = uid
         self.client_info = ClientInfo(uid=uid, name=name)
 
         self._rsa_private_key, self._rsa_public_key = Tools.generate_rsa_keys()
@@ -195,10 +197,15 @@ class ClientRunner(CommunicationService):
         # wait here till the registration not completed
         while self._status != ClientRunnerStatusEnum.COMPLETED_REGISTRATION:
             pass
-        print(ClientOutputsEnum.REGISTRATION_COMPLETED.value)
 
         # print to the Client that now able to send message
-        print(ClientOutputsEnum.CAN_SEND_MESSAGE.value)
+        content = ""
+        while content != 'exit':
+            print(ClientOutputsEnum.REGISTRATION_COMPLETED.value)
+            content = input(ClientOutputsEnum.CAN_SEND_MESSAGE.value)
+            message = ContentMessage(uid=self._uid,des_uid=self._uid,content=content,hmac="mac",signature="sig")
+            self.send_msg(sock=s,content=message.encode())
+
 
         # Keep the main thread alive while handling incoming messages
         try:
