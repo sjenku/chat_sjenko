@@ -9,4 +9,5 @@ class ClientOutputsEnum(str, Enum):
     INSERT_UID = "Please insert your phone number:"
     REGISTRATION_COMPLETED = "Hey! Good news, the registration completed"
     CAN_SEND_MESSAGE = "To send a message write the message and press Enter"
+    RECEIVED_OPT = "You received opt: {}, please resend it to server:"
 

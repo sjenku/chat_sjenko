@@ -3,12 +3,14 @@ import logging
 import random
 import socket
 import threading
+from datetime import datetime, timedelta
 from typing import Optional
 
 from Communication.Messages.messages import ClientRegistrationMessage, OptMessage, KeyMessage, ContentMessage, \
     CommunicationMessageTypesEnum
 from Communication.communication_service import CommunicationService
-from Tools.encryptors import EncryptorRSA
+from Server.DB.data_base import DataBase
+from Server.DB.rows import RegistrationTableRow, UserKeyTableRow
 from Tools.tools import Tools
 from Utils.internal_logger import InternalLogger
 
@@ -21,9 +23,7 @@ class ServerRunner(CommunicationService):
         self._private_key:Optional[str] = None
         self._public_key:Optional[str] = None
         self._clients:list[socket] = []
-
-        self._opt = "" # todo: we will do this just for test
-
+        self._db = DataBase()
     def handle_msg_receiving(self, sock, address):
         self._logger.info("Server handle message")
 
@@ -46,7 +46,7 @@ class ServerRunner(CommunicationService):
 
                 if message_type == CommunicationMessageTypesEnum.KEY_MESSAGE:
                     key_message = KeyMessage(**data)
-                    self.handle_key_msg_receiving(key_message=key_message,sock=sock)
+                    self.handle_key_msg_receiving(key_message=key_message)
 
                 if message_type == CommunicationMessageTypesEnum.CONTENT_MESSAGE:
                     content_message = ContentMessage(**data)
@@ -54,29 +54,88 @@ class ServerRunner(CommunicationService):
 
     def handle_client_registration_msg_receiving(self,client_reg_message:ClientRegistrationMessage,sock:socket):
         self._logger.info("Received Client Registration msg")
+
+        # add client to the registration_table
+        success = self._db.registration_table.add_row(RegistrationTableRow(uid=client_reg_message.uid))
+        if not success:
+            raise ValueError("This account already exists in data base")
+
+        # add client public key to the user_key_table
+        success = self._db.user_key_table.add_row(UserKeyTableRow(uid=client_reg_message.uid,
+                                                                  public_key=client_reg_message.public_key))
+        if not success:
+            raise ValueError("This user already exists in the data base")
+
+        # update the registration_table with info that client provided the public key
+        registration_row = self._db.registration_table.find_by_uid(client_reg_message.uid)
+        registration_row.rec_pub_key = True
+        self._db.registration_table.update_row(registration_row)
+
         # send to the client opt
-        self._opt = str(random.randint(100000, 999999))
-        opt_message = OptMessage(opt=str(self._opt))
+        opt = str(random.randint(100000, 999999))
+        opt_message = OptMessage(uid=client_reg_message.uid,opt=str(opt))
         self.send_msg(sock=sock,content=opt_message.encode())
+
+        # update the time of the opt that sent
+        registration_row.opt_time = datetime.now()
+        self._db.registration_table.update_row(registration_row)
 
     def handle_opt_msg_receiving(self,opt_message:OptMessage,sock:socket):
         self._logger.info(f"Received OPT message {opt_message.opt}.")
-        if opt_message.opt == self._opt:
+        registration_row = self._db.registration_table.find_by_uid(opt_message.uid)
+        if not registration_row:
+            self._logger.error("Client not registered and sent OPT code!")
 
-            # send server public key
-            key_message = KeyMessage(key=self._public_key)
-            self.send_msg(sock=sock,content=key_message.encode())
+        if datetime.now() - registration_row.opt_time >= timedelta(seconds=10):
+            self._logger.error("Time Limit reached for OPT,resending new opt to the client")
 
+            # send to the client opt
+            opt = str(random.randint(100000, 999999))
+            new_opt_message = OptMessage(uid=opt_message.uid,opt=str(opt))
+            self.send_msg(sock=sock, content=new_opt_message.encode())
 
-    def handle_key_msg_receiving(self,key_message:KeyMessage,sock:socket):
+            # update the time of opt message sending
+            registration_row.opt_time = datetime.now()
+            self._db.registration_table.update_row(registration_row)
+            return
+
+        # update registration table that server received opt from client
+        registration_row.recieved_opt = True
+        self._db.registration_table.update_row(registration_row)
+
+        # send server public key
+        key_message = KeyMessage(uid=opt_message.uid,key=self._public_key)
+        self.send_msg(sock=sock,content=key_message.encode())
+
+    def handle_key_msg_receiving(self,key_message:KeyMessage):
         self._logger.info(f"Received Key Message {key_message.key}")
 
-        encryptor_rsa = EncryptorRSA()
-        decrypted_key = encryptor_rsa.decrypt(key=self._private_key.encode(),content=key_message.key)
-        pass
+        registration_row = self._db.registration_table.find_by_uid(key_message.uid)
+        if not registration_row:
+            self._logger.error("Client not registered and sent OPT code!")
+
+        # update registration table
+        registration_row.recieved_aes = True
+        registration_row.passed_registration = True
+        self._logger.info(f"Registration Row: {registration_row}")
+        self._db.registration_table.update_row(registration_row)
+
+        user_key_row = self._db.user_key_table.find_by_uid(key_message.uid)
+        if not user_key_row:
+            self._logger.error("The user doesn't have a row in user key database.")
+
+        # update user key row table
+        user_key_row.aes_key = key_message.key
+        self._db.user_key_table.update_row(user_key_row)
+
 
     def handle_content_message(self,content_message:ContentMessage):
         self._logger.info("Received Content Message")
+        # check if the user passed the registration
+            # if does, check if the des_uid registered.
+                # if does, send message to des_uid
+
+
         pass
 
     def prepare_msg_for_sending(self):
@@ -88,7 +147,6 @@ class ServerRunner(CommunicationService):
         try:
             # Send data
             sock.sendall(content)
-            print("Data sent successfully")
         except BrokenPipeError:
             print("Connection broken. Unable to send data.")
         except ConnectionResetError:

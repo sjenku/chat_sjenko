@@ -57,19 +57,23 @@ class ClientRunner(CommunicationService):
                     content_message = ContentMessage(**data)
                     self.handle_content_msg(content_message=content_message)
 
-
     def handle_opt_msg_receiving(self, opt_message: OptMessage, n_socket: socket):
         self._logger.info(f"received from server OPT = {opt_message.opt}")
         # check first that we actually waiting for opt, if not write an error
-        if self._status != ClientRunnerStatusEnum.WAIT_FOR_OPT:
+        if (self._status != ClientRunnerStatusEnum.WAIT_FOR_OPT and
+                self._status != ClientRunnerStatusEnum.WAIT_FOR_SERVER_PUBLIC_KEY):
             self._logger.error("The Client not waiting for OPT!")
             return
+
+        # prompt to the Client that received opt and need to resend it to the server
+        client_opt = input(ClientOutputsEnum.RECEIVED_OPT.value.format(opt_message.opt))
+        respond_opt_message = OptMessage(uid=opt_message.uid,opt=client_opt)
 
         # change the status
         self._status = ClientRunnerStatusEnum.WAIT_FOR_SERVER_PUBLIC_KEY
 
         # resend opt message to server as approve that this client.
-        self.send_msg(n_socket, opt_message.encode())
+        self.send_msg(n_socket, respond_opt_message.encode())
 
     def handle_key_msg_receiving(self, key_message: KeyMessage, n_socket: socket):
         self._logger.info("Received key message.")
@@ -86,11 +90,10 @@ class ClientRunner(CommunicationService):
         encrypted_key = encryptor_rsa.encrypt(key=self._server_public_key.encode(EncryptorRSA.ENCODING_STD),
                                               content=self._aes_key)
 
-        message_to_send = KeyMessage(key=encrypted_key)  # message with the client's encrypted AES key
+        message_to_send = KeyMessage(uid=key_message.uid,key=encrypted_key)  # message with the client's encrypted AES key
 
         self._status = ClientRunnerStatusEnum.COMPLETED_REGISTRATION
         self.send_msg(sock=n_socket, content=message_to_send.encode())
-
 
     def handle_content_msg(self, content_message: ContentMessage):
         self._logger.info("Received content message.")
@@ -114,7 +117,6 @@ class ClientRunner(CommunicationService):
         try:
             # Send data
             sock.sendall(content)
-            print("Data sent successfully")
         except BrokenPipeError:
             print("Connection broken. Unable to send data.")
         except ConnectionResetError:
@@ -156,7 +158,7 @@ class ClientRunner(CommunicationService):
     def start(self):
 
         # generate client's keys
-        self._rsa_private_key,self._rsa_public_key = Tools.generate_rsa_keys()
+        self._rsa_private_key, self._rsa_public_key = Tools.generate_rsa_keys()
         self._aes_key = Tools.generate_aes_key()
         self._logger.info(f"Aes key = {self._aes_key}")
 
@@ -210,6 +212,5 @@ class ClientRunner(CommunicationService):
 
 
 if __name__ == "__main__":
-
     client_runner = ClientRunner()
     client_runner.start()

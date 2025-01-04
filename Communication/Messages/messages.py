@@ -67,7 +67,8 @@ class ClientRegistrationMessage(CommunicationMessage):
 class KeyMessage(CommunicationMessage):
     """Message that holds a key"""
 
-    def __init__(self, key: str):
+    def __init__(self,uid:str ,key: str):
+        self.uid = uid
         self.key = key
 
     def to_dict(self):
@@ -80,7 +81,8 @@ class KeyMessage(CommunicationMessage):
 class OptMessage(CommunicationMessage):
     """Message that holds an OPT."""
 
-    def __init__(self, opt: str):
+    def __init__(self,uid: str, opt: str):
+        self.uid = uid
         self.opt = opt
 
     def to_dict(self):
@@ -93,7 +95,8 @@ class OptMessage(CommunicationMessage):
 class AckMessage(CommunicationMessage):
     """Message that sent as an acknowledgment to another side that he/her got the message."""
 
-    def __init__(self, ack: str):
+    def __init__(self,uid: str, ack: str):
+        self.uid = uid
         self.ack = ack
 
     def to_dict(self):
