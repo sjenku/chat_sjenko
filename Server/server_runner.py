@@ -1,3 +1,4 @@
+import base64
 import copy
 import json
 import logging
@@ -6,6 +7,10 @@ import socket
 import threading
 from datetime import datetime, timedelta
 from typing import Optional
+
+from Crypto.Hash import SHA256
+from Crypto.PublicKey import RSA
+from Crypto.Signature import pkcs1_15
 
 from Communication.Messages.messages import ClientRegistrationMessage, OptMessage, KeyMessage, ContentMessage, \
     CommunicationMessageTypesEnum
@@ -163,21 +168,35 @@ class ServerRunner(CommunicationService):
                                                             content=client_to_encrypted_aes_key)
         client_to_aes_key = EncryptorAESKey(key=client_to_decrypted_aes_key)
 
-        # compare hmac
+        # ------------- compare hmac --------------- #
         if not Tools.verify_hmac(key=client_from_aes_key,
-                             content=content_message.content.encode(),
-                             hmac=content_message.hmac):
+                                 content=content_message.content.encode(),
+                                 hmac=content_message.hmac):
             self._logger.warning("The HMAC not identical")
             return
 
+        # ------------- varify signature ----------- #
+        client_from_public_key = EncryptorRSAKey(self._db.user_key_table.find_by_uid(content_message.uid).public_key)
+        try:
+            Tools.varify_signature(rsa_public_key=client_from_public_key,
+                                   signature=content_message.signature,
+                                   hmac=content_message.hmac)
+            self._logger.info("Signature is valid.")
+        except (ValueError, TypeError):
+            self._logger.error("Signature is invalid.")
+            return
+
         # first decrypt the content with client's aes key that sent the message
-        decrypted_content = encryptor_aes.decrypt(key=client_from_aes_key, content=content_message.content)
+        decrypted_content = encryptor_aes.decrypt(key=client_from_aes_key,
+                                                  content=content_message.content)
 
         # encrypt the content with aes_key of the client that the message will be delivered to
-        encrypted_content = encryptor_aes.encrypt(key=client_to_aes_key,content=decrypted_content)
+        encrypted_content = encryptor_aes.encrypt(key=client_to_aes_key,
+                                                  content=decrypted_content)
 
         # set a new hmac on encrypted_content
-        hmac = Tools.generate_hmac(key=client_to_aes_key,content=encrypted_content.encode())
+        hmac = Tools.generate_hmac(key=client_to_aes_key,
+                                   content=encrypted_content.encode())
 
         # create a new message
         new_content_message = copy.deepcopy(content_message)
@@ -185,7 +204,8 @@ class ServerRunner(CommunicationService):
         new_content_message.hmac = hmac
 
         # if both registered send message
-        self.send_msg(sock=self._uid_socket[content_message.des_uid], content=new_content_message.encode())
+        self.send_msg(sock=self._uid_socket[content_message.des_uid],
+                      content=new_content_message.encode())
 
     def prepare_msg_for_sending(self):
         self._logger.info("Server preparing message")
@@ -232,7 +252,8 @@ class ServerRunner(CommunicationService):
                 self._logger.info("New connection with client")
                 self._clients.append(client_socket)
 
-                client_handler = threading.Thread(target=self.handle_msg_receiving, args=(client_socket, address))
+                client_handler = threading.Thread(target=self.handle_msg_receiving,
+                                                  args=(client_socket, address))
                 client_handler.start()
 
 

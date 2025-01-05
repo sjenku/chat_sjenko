@@ -7,6 +7,11 @@ from enum import Enum
 
 from typing import Optional
 
+from Crypto.Hash import SHA256
+from Crypto.PublicKey import RSA
+from Crypto.PublicKey.RSA import RsaKey
+from Crypto.Signature import pkcs1_15
+
 from Client.client_info import ClientInfo
 from Client.client_outputs import ClientOutputsEnum
 from Communication.Messages.messages import ClientRegistrationMessage, OptMessage, KeyMessage, ContentMessage, \
@@ -115,6 +120,9 @@ class ClientRunner(CommunicationService):
                                  hmac=content_message.hmac):
             self._logger.warning("The HMAC not identical")
             return
+
+        # check signature
+        # todo:
 
         # decrypt the message with client's aes key
         encryptor_aes = EncryptorAES()
@@ -238,18 +246,19 @@ class ClientRunner(CommunicationService):
             encryptor_aes = EncryptorAES()
             encrypted_content = encryptor_aes.encrypt(key=self._aes_key,content=content)
 
-            # create a hmac
+            # create hmac
             hmac = Tools.generate_hmac(key=self._aes_key,content=encrypted_content.encode())
-            message = ContentMessage(uid=self._uid,des_uid=des_uid,content=encrypted_content,hmac=hmac,signature="sig")
+
+            # create signature
+            signature = Tools.create_signature(rsa_private_key=self._rsa_private_key,hmac=hmac)
+
+            message = ContentMessage(uid=self._uid,
+                                     des_uid=des_uid,
+                                     content=encrypted_content,
+                                     hmac=hmac,
+                                     signature=signature)
             self.send_msg(sock=s,content=message.encode())
 
-        # Keep the main thread alive while handling incoming messages
-        try:
-            while True:
-                pass
-        except KeyboardInterrupt:
-            self._logger.info("Client shutting down")
-            s.close()
 
         s.close()
 
