@@ -1,3 +1,4 @@
+import base64
 import json
 import logging
 import socket
@@ -11,7 +12,7 @@ from Client.client_outputs import ClientOutputsEnum
 from Communication.Messages.messages import ClientRegistrationMessage, OptMessage, KeyMessage, ContentMessage, \
     CommunicationMessageTypesEnum
 from Communication.communication_service import CommunicationService
-from Tools.encryptors import EncryptorRSA
+from Tools.encryptors import EncryptorRSA, EncryptorAES, EncryptorAESKey, EncryptorRSAKey
 from Tools.tools import Tools
 from Utils.internal_logger import InternalLogger
 
@@ -28,16 +29,16 @@ class ClientRunner(CommunicationService):
     def __init__(self):
         self._logger: InternalLogger = InternalLogger(logging_level=logging.DEBUG)
         self.client_info: Optional[ClientInfo] = None
-        self._aes_key: Optional[str] = None
-        self._rsa_private_key: Optional[str] = None
-        self._rsa_public_key: Optional[str] = None
-        self._server_public_key: Optional[str] = None
-        self._uid = ""
-        self._status = ClientRunnerStatusEnum.REGISTRATION
+        self._aes_key: Optional[EncryptorAESKey] = None
+        self._rsa_private_key: Optional[EncryptorRSAKey] = None
+        self._rsa_public_key: Optional[EncryptorRSAKey] = None
+        self._server_public_key: Optional[EncryptorRSAKey] = None
+        self._uid:str = ""
+        self._status:ClientRunnerStatusEnum = ClientRunnerStatusEnum.REGISTRATION
 
         # we use this attributes, in case we receive message, and message on console removed by incoming message
-        self._waiting_uid_des_input = False
-        self._waiting_content_input = False
+        self._waiting_uid_des_input:bool = False
+        self._waiting_content_input:bool = False
 
     def handle_msg_receiving(self, n_socket, address):
         self._logger.info("Client handle message")
@@ -88,14 +89,15 @@ class ClientRunner(CommunicationService):
             return
 
         # save server's public key
-        self._server_public_key = key_message.key
+        self._server_public_key = EncryptorRSAKey(key_message.encrypted_key)
 
         # send to a server the encrypted AES key, for feature communication
         encryptor_rsa = EncryptorRSA()
-        encrypted_key = encryptor_rsa.encrypt(key=self._server_public_key.encode(EncryptorRSA.ENCODING_STD),
-                                              content=self._aes_key)
+        encrypted_key = encryptor_rsa.encrypt(key=self._server_public_key,
+                                              content=self._aes_key.str())
 
-        message_to_send = KeyMessage(uid=key_message.uid,key=encrypted_key)  # message with the client's encrypted AES key
+        # message with the client's encrypted AES key
+        message_to_send = KeyMessage(uid=key_message.uid,encrypted_key=encrypted_key)
 
         self._status = ClientRunnerStatusEnum.COMPLETED_REGISTRATION
         self.send_msg(sock=n_socket, content=message_to_send.encode())
@@ -107,11 +109,15 @@ class ClientRunner(CommunicationService):
             self._logger.error("The registration not completed for this Client.")
             return
 
+        # decrypt the message with client's aes key
+        encryptor_aes = EncryptorAES()
+        dycrypted_content = encryptor_aes.decrypt(key=self._aes_key,content=content_message.content)
+
         print(f"""
         ====== Received Message ====
         == From    : {content_message.uid}
         == To      : {content_message.des_uid}
-        == Content : {content_message.content}
+        == Content : {dycrypted_content}
         =========== End ============
         """)
 
@@ -169,8 +175,8 @@ class ClientRunner(CommunicationService):
     def start(self):
 
         # generate client's keys
-        self._rsa_private_key, self._rsa_public_key = Tools.generate_rsa_keys()
-        self._aes_key = Tools.generate_aes_key()
+        self._rsa_private_key, self._rsa_public_key = EncryptorRSAKey.create_keys()
+        self._aes_key = EncryptorAESKey.create()
         self._logger.info(f"Aes key = {self._aes_key}")
 
         # prompt to console
@@ -208,9 +214,8 @@ class ClientRunner(CommunicationService):
             pass
 
         # print to the Client that now able to send message
-        content = ""
-
         print(ClientOutputsEnum.REGISTRATION_COMPLETED.value)
+        encryptor_aes = EncryptorAES()
         while True:
             self._waiting_uid_des_input = True
             des_uid = input(ClientOutputsEnum.CAN_SEND_MESSAGE_WRITE_TO.value)
@@ -222,7 +227,9 @@ class ClientRunner(CommunicationService):
             self._waiting_content_input = False
             if content == 'exit':
                 break
-            message = ContentMessage(uid=self._uid,des_uid=des_uid,content=content,hmac="mac",signature="sig")
+
+            encrypted_content = encryptor_aes.encrypt(key=self._aes_key,content=content)
+            message = ContentMessage(uid=self._uid,des_uid=des_uid,content=encrypted_content,hmac="mac",signature="sig")
             self.send_msg(sock=s,content=message.encode())
 
 

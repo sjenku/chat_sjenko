@@ -15,9 +15,9 @@ class TableRow:
 
 
 class UserKeyTableRow(TableRow):
-    def __init__(self, uid: str, aes_key: str = "", public_key: str = ""):
+    def __init__(self, uid: str, encrypted_aes_key: str = "", public_key: str = ""):
         super().__init__(uid)
-        self.aes_key = aes_key
+        self.encrypted_aes_key = encrypted_aes_key
         self.public_key = public_key
 
 

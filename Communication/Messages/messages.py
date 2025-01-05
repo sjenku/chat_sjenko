@@ -65,9 +65,9 @@ class ClientRegistrationMessage(CommunicationMessage):
 class KeyMessage(CommunicationMessage):
     """Message that holds a key"""
 
-    def __init__(self,uid:str ,key: str):
+    def __init__(self,uid:str ,encrypted_key: str):
         self.uid = uid
-        self.key = key
+        self.encrypted_key = encrypted_key
 
     def to_dict(self):
         return {

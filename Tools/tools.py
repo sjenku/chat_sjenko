@@ -15,12 +15,6 @@ class Tools:
         public_key = key.publickey().export_key()
         return private_key.decode(), public_key.decode()
 
-    # AES Key Generation
-    @staticmethod
-    def generate_aes_key() -> str:
-        random_bytes = get_random_bytes(32)
-        return base64.b64encode(random_bytes).decode()  # Encodes to Base64 and then decodes to UTF-8
-
     @staticmethod
     def _split_aes_key(aes_key: bytes) -> (bytes,bytes):
         key_enc = aes_key[:16]  # First 16 bytes for encryption

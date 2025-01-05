@@ -1,3 +1,4 @@
+import copy
 import json
 import logging
 import random
@@ -11,6 +12,7 @@ from Communication.Messages.messages import ClientRegistrationMessage, OptMessag
 from Communication.communication_service import CommunicationService
 from Server.DB.data_base import DataBase
 from Server.DB.rows import RegistrationTableRow, UserKeyTableRow
+from Tools.encryptors import EncryptorAES, EncryptorAESKey, EncryptorRSAKey, EncryptorRSA
 from Tools.tools import Tools
 from Utils.internal_logger import InternalLogger
 
@@ -20,11 +22,12 @@ class ServerRunner(CommunicationService):
 
     def __init__(self):
         self._logger = InternalLogger(logging_level=logging.DEBUG)
-        self._private_key:Optional[str] = None
-        self._public_key:Optional[str] = None
-        self._clients:list[socket] = []
-        self._uid_socket:dict[str, socket] = {}
+        self._private_key: Optional[EncryptorRSAKey] = None
+        self._public_key: Optional[EncryptorRSAKey] = None
+        self._clients: list[socket] = []
+        self._uid_socket: dict[str, socket] = {}
         self._db = DataBase()
+
     def handle_msg_receiving(self, sock, address):
         self._logger.info("Server handle message")
 
@@ -39,11 +42,11 @@ class ServerRunner(CommunicationService):
 
                 if message_type == CommunicationMessageTypesEnum.CLIENT_REGISTRATION_MESSAGE:
                     client_reg_message = ClientRegistrationMessage(**data)
-                    self.handle_client_registration_msg_receiving(client_reg_message=client_reg_message,sock=sock)
+                    self.handle_client_registration_msg_receiving(client_reg_message=client_reg_message, sock=sock)
 
                 if message_type == CommunicationMessageTypesEnum.OPT_MESSAGE:
                     opt_message = OptMessage(**data)
-                    self.handle_opt_msg_receiving(opt_message = opt_message,sock=sock)
+                    self.handle_opt_msg_receiving(opt_message=opt_message, sock=sock)
 
                 if message_type == CommunicationMessageTypesEnum.KEY_MESSAGE:
                     key_message = KeyMessage(**data)
@@ -53,7 +56,7 @@ class ServerRunner(CommunicationService):
                     content_message = ContentMessage(**data)
                     self.handle_content_message(content_message=content_message)
 
-    def handle_client_registration_msg_receiving(self,client_reg_message:ClientRegistrationMessage,sock:socket):
+    def handle_client_registration_msg_receiving(self, client_reg_message: ClientRegistrationMessage, sock: socket):
         self._logger.info("Received Client Registration msg")
         # bind the socket to the uid
         self._uid_socket[client_reg_message.uid] = sock
@@ -76,15 +79,15 @@ class ServerRunner(CommunicationService):
 
         # send to the client opt
         opt = str(random.randint(100000, 999999))
-        opt_message = OptMessage(uid=client_reg_message.uid,opt=str(opt))
-        self.send_msg(sock=sock,content=opt_message.encode())
+        opt_message = OptMessage(uid=client_reg_message.uid, opt=str(opt))
+        self.send_msg(sock=sock, content=opt_message.encode())
 
         # update the time of the opt that sent
         registration_row.opt_time = datetime.now()
         registration_row.sent_opt = True
         self._db.registration_table.update_row(registration_row)
 
-    def handle_opt_msg_receiving(self,opt_message:OptMessage,sock:socket):
+    def handle_opt_msg_receiving(self, opt_message: OptMessage, sock: socket):
         self._logger.info(f"Received OPT message {opt_message.opt}.")
         registration_row = self._db.registration_table.find_by_uid(opt_message.uid)
         if not registration_row:
@@ -95,7 +98,7 @@ class ServerRunner(CommunicationService):
 
             # send to the client opt
             opt = str(random.randint(100000, 999999))
-            new_opt_message = OptMessage(uid=opt_message.uid,opt=str(opt))
+            new_opt_message = OptMessage(uid=opt_message.uid, opt=str(opt))
             self.send_msg(sock=sock, content=new_opt_message.encode())
 
             # update the time of opt message sending
@@ -108,11 +111,11 @@ class ServerRunner(CommunicationService):
         self._db.registration_table.update_row(registration_row)
 
         # send server public key
-        key_message = KeyMessage(uid=opt_message.uid,key=self._public_key)
-        self.send_msg(sock=sock,content=key_message.encode())
+        key_message = KeyMessage(uid=opt_message.uid, encrypted_key=self._public_key.str())
+        self.send_msg(sock=sock, content=key_message.encode())
 
-    def handle_key_msg_receiving(self,key_message:KeyMessage):
-        self._logger.info(f"Received Key Message {key_message.key}")
+    def handle_key_msg_receiving(self, key_message: KeyMessage):
+        self._logger.info(f"Received Key Message {key_message.encrypted_key}")
 
         registration_row = self._db.registration_table.find_by_uid(key_message.uid)
         if not registration_row:
@@ -129,11 +132,11 @@ class ServerRunner(CommunicationService):
             self._logger.error("The user doesn't have a row in user key database.")
 
         # update user key row table
-        user_key_row.aes_key = key_message.key
+        user_key_row.encrypted_aes_key = key_message.encrypted_key
         self._db.user_key_table.update_row(user_key_row)
 
-    def handle_content_message(self,content_message:ContentMessage):
-        self._logger.info("Received Content Message")
+    def handle_content_message(self, content_message: ContentMessage):
+        self._logger.info(f"Server received message {content_message}")
         # check if the user passed the registration
         registration_row_client_from = self._db.registration_table.find_by_uid(content_message.uid)
         registration_row_client_to = self._db.registration_table.find_by_uid(content_message.des_uid)
@@ -146,8 +149,33 @@ class ServerRunner(CommunicationService):
                                f"{content_message.des_uid} not registered.")
             return
 
+        encryptor_aes = EncryptorAES()
+        encryptor_rsa = EncryptorRSA()
+
+        # decrypt the aes keys of the client's from and to
+        client_from_encrypted_aes_key = self._db.user_key_table.find_by_uid(content_message.uid).encrypted_aes_key
+        client_from_decrypted_aes_key = encryptor_rsa.decrypt(key=self._private_key,
+                                                              content=client_from_encrypted_aes_key)
+        client_from_aes_key = EncryptorAESKey(key=client_from_decrypted_aes_key)
+
+        client_to_encrypted_aes_key = self._db.user_key_table.find_by_uid(content_message.des_uid).encrypted_aes_key
+        client_to_decrypted_aes_key = encryptor_rsa.decrypt(key=self._private_key,
+                                                            content=client_to_encrypted_aes_key)
+        client_to_aes_key = EncryptorAESKey(key=client_to_decrypted_aes_key)
+
+
+        # first decrypt the content with client's aes key that sent the message
+        decrypted_content = encryptor_aes.decrypt(key=client_from_aes_key, content=content_message.content)
+
+        # encrypt the content with aes_key of the client that the message will be delivered to
+        encrypted_content = encryptor_aes.encrypt(key=client_to_aes_key,content=decrypted_content)
+
+        # create a new message
+        new_content_message = copy.deepcopy(content_message)
+        new_content_message.content = encrypted_content
+
         # if both registered send message
-        self.send_msg(sock=self._uid_socket[content_message.des_uid],content=content_message.encode())
+        self.send_msg(sock=self._uid_socket[content_message.des_uid], content=new_content_message.encode())
 
     def prepare_msg_for_sending(self):
         self._logger.info("Server preparing message")
@@ -173,8 +201,7 @@ class ServerRunner(CommunicationService):
         self._logger.info("Start server")
 
         # create server's private and public keys
-        self._private_key,self._public_key = Tools.generate_rsa_keys()
-
+        self._private_key, self._public_key = EncryptorRSAKey.create_keys()
 
         # set host and port of the server
         host = 'localhost'
@@ -199,8 +226,6 @@ class ServerRunner(CommunicationService):
                 client_handler.start()
 
 
-
 if __name__ == "__main__":
     service_runner = ServerRunner()
     service_runner.start()
-

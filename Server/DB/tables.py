@@ -1,5 +1,4 @@
 import copy
-from enum import Enum
 from typing import Generic, TypeVar, Optional
 
 from Server.DB.rows import UserKeyTableRow, RegistrationTableRow, PendingMessageTableRow
