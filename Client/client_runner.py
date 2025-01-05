@@ -35,6 +35,10 @@ class ClientRunner(CommunicationService):
         self._uid = ""
         self._status = ClientRunnerStatusEnum.REGISTRATION
 
+        # we use this attributes, in case we receive message, and message on console removed by incoming message
+        self._waiting_uid_des_input = False
+        self._waiting_content_input = False
+
     def handle_msg_receiving(self, n_socket, address):
         self._logger.info("Client handle message")
         while True:  # Continuous loop to keep receiving messages
@@ -111,8 +115,13 @@ class ClientRunner(CommunicationService):
         =========== End ============
         """)
 
+        if self._waiting_uid_des_input:
+            print(ClientOutputsEnum.CAN_SEND_MESSAGE_WRITE_TO.value)
+        if self._waiting_content_input:
+            print(ClientOutputsEnum.CAN_SEND_MESSAGE_WRITE_CONTENT.value)
+
     def prepare_msg_for_sending(self):
-        pass
+       pass
 
     def send_msg(self, sock: socket, content):
         try:
@@ -200,10 +209,20 @@ class ClientRunner(CommunicationService):
 
         # print to the Client that now able to send message
         content = ""
-        while content != 'exit':
-            print(ClientOutputsEnum.REGISTRATION_COMPLETED.value)
-            content = input(ClientOutputsEnum.CAN_SEND_MESSAGE.value)
-            message = ContentMessage(uid=self._uid,des_uid=self._uid,content=content,hmac="mac",signature="sig")
+
+        print(ClientOutputsEnum.REGISTRATION_COMPLETED.value)
+        while True:
+            self._waiting_uid_des_input = True
+            des_uid = input(ClientOutputsEnum.CAN_SEND_MESSAGE_WRITE_TO.value)
+            self._waiting_uid_des_input = False
+            if des_uid == 'exit':
+                break
+            self._waiting_content_input = True
+            content = input(ClientOutputsEnum.CAN_SEND_MESSAGE_WRITE_CONTENT.value)
+            self._waiting_content_input = False
+            if content == 'exit':
+                break
+            message = ContentMessage(uid=self._uid,des_uid=des_uid,content=content,hmac="mac",signature="sig")
             self.send_msg(sock=s,content=message.encode())
 
 
