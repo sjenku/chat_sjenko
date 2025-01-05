@@ -45,7 +45,7 @@ class ClientRunner(CommunicationService):
         while True:  # Continuous loop to keep receiving messages
             raw_data = n_socket.recv(1024)
             if not raw_data:
-                self._logger.warn("Connection closed by the server")
+                self._logger.warning("Connection closed by the server")
             else:
                 message = json.loads(raw_data)
                 message_type = message.get("type")
@@ -109,6 +109,13 @@ class ClientRunner(CommunicationService):
             self._logger.error("The registration not completed for this Client.")
             return
 
+        # compare hmac
+        if not Tools.verify_hmac(key=self._aes_key,
+                                 content=content_message.content.encode(),
+                                 hmac=content_message.hmac):
+            self._logger.warning("The HMAC not identical")
+            return
+
         # decrypt the message with client's aes key
         encryptor_aes = EncryptorAES()
         dycrypted_content = encryptor_aes.decrypt(key=self._aes_key,content=content_message.content)
@@ -163,13 +170,13 @@ class ClientRunner(CommunicationService):
         self._uid = uid
         self.client_info = ClientInfo(uid=uid, name=name)
 
-        self._rsa_private_key, self._rsa_public_key = Tools.generate_rsa_keys()
+        self._rsa_private_key, self._rsa_public_key = EncryptorRSAKey.create_keys()
 
         # set status to wait from OPT from the server
         self._status = ClientRunnerStatusEnum.WAIT_FOR_OPT
 
         # send to server Client's public key and uid
-        message = ClientRegistrationMessage(uid=uid, public_key=self._rsa_public_key)
+        message = ClientRegistrationMessage(uid=uid, public_key=self._rsa_public_key.str())
         self.send_msg(sock=sock, content=message.encode())
 
     def start(self):
@@ -215,7 +222,6 @@ class ClientRunner(CommunicationService):
 
         # print to the Client that now able to send message
         print(ClientOutputsEnum.REGISTRATION_COMPLETED.value)
-        encryptor_aes = EncryptorAES()
         while True:
             self._waiting_uid_des_input = True
             des_uid = input(ClientOutputsEnum.CAN_SEND_MESSAGE_WRITE_TO.value)
@@ -228,10 +234,14 @@ class ClientRunner(CommunicationService):
             if content == 'exit':
                 break
 
+            # encrypt the content of the message
+            encryptor_aes = EncryptorAES()
             encrypted_content = encryptor_aes.encrypt(key=self._aes_key,content=content)
-            message = ContentMessage(uid=self._uid,des_uid=des_uid,content=encrypted_content,hmac="mac",signature="sig")
-            self.send_msg(sock=s,content=message.encode())
 
+            # create a hmac
+            hmac = Tools.generate_hmac(key=self._aes_key,content=encrypted_content.encode())
+            message = ContentMessage(uid=self._uid,des_uid=des_uid,content=encrypted_content,hmac=hmac,signature="sig")
+            self.send_msg(sock=s,content=message.encode())
 
         # Keep the main thread alive while handling incoming messages
         try:

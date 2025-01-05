@@ -34,7 +34,7 @@ class ServerRunner(CommunicationService):
         while True:  # Continuous loop to keep receiving messages
             raw_data = sock.recv(1024)
             if not raw_data:
-                self._logger.warn("Connection closed by the server")
+                self._logger.warning("Connection closed by the server")
             else:
                 message = json.loads(raw_data)
                 message_type = message.get("type")
@@ -163,6 +163,12 @@ class ServerRunner(CommunicationService):
                                                             content=client_to_encrypted_aes_key)
         client_to_aes_key = EncryptorAESKey(key=client_to_decrypted_aes_key)
 
+        # compare hmac
+        if not Tools.verify_hmac(key=client_from_aes_key,
+                             content=content_message.content.encode(),
+                             hmac=content_message.hmac):
+            self._logger.warning("The HMAC not identical")
+            return
 
         # first decrypt the content with client's aes key that sent the message
         decrypted_content = encryptor_aes.decrypt(key=client_from_aes_key, content=content_message.content)
@@ -170,9 +176,13 @@ class ServerRunner(CommunicationService):
         # encrypt the content with aes_key of the client that the message will be delivered to
         encrypted_content = encryptor_aes.encrypt(key=client_to_aes_key,content=decrypted_content)
 
+        # set a new hmac on encrypted_content
+        hmac = Tools.generate_hmac(key=client_to_aes_key,content=encrypted_content.encode())
+
         # create a new message
         new_content_message = copy.deepcopy(content_message)
         new_content_message.content = encrypted_content
+        new_content_message.hmac = hmac
 
         # if both registered send message
         self.send_msg(sock=self._uid_socket[content_message.des_uid], content=new_content_message.encode())
@@ -181,7 +191,7 @@ class ServerRunner(CommunicationService):
         self._logger.info("Server preparing message")
         pass
 
-    def send_msg(self, sock: socket, content):
+    def send_msg(self, sock: socket, content:bytes):
         self._logger.info(f"Server sending message to {content.decode()}")
         try:
             # Send data

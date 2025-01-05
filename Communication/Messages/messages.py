@@ -24,6 +24,9 @@ class CommunicationMessage(ABC):
         content = serialized_message.encode()
         return content
 
+    def __str__(self):
+        return self.__dict__.__str__()
+
 
 class ContentMessage(CommunicationMessage):
     """This is a Class that hold the message passed between clients and server."""

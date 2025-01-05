@@ -4,17 +4,10 @@ from Crypto.Hash import HMAC, SHA256
 from Crypto.PublicKey import RSA
 from Crypto.Random import get_random_bytes
 
+from Tools.encryptors import EncryptorAESKey
+
 
 class Tools:
-
-    # RSA Key Pair generation
-    @staticmethod
-    def generate_rsa_keys() -> (str,str):
-        key = RSA.generate(2048)
-        private_key = key.export_key()
-        public_key = key.publickey().export_key()
-        return private_key.decode(), public_key.decode()
-
     @staticmethod
     def _split_aes_key(aes_key: bytes) -> (bytes,bytes):
         key_enc = aes_key[:16]  # First 16 bytes for encryption
@@ -23,16 +16,16 @@ class Tools:
 
     # Generate HMAC
     @staticmethod
-    def generate_hmac(key, message):
-        h = HMAC.new(key, digestmod=SHA256)
-        h.update(message)
+    def generate_hmac(key:EncryptorAESKey, content:bytes) -> str:
+        h = HMAC.new(key.bytes(), digestmod=SHA256)
+        h.update(content)
         return h.hexdigest()
 
     @staticmethod
     # Verify HMAC
-    def verify_hmac(key, message, hmac):
-        h = HMAC.new(key, digestmod=SHA256)
-        h.update(message)
+    def verify_hmac(key:EncryptorAESKey, content:bytes, hmac: str):
+        h = HMAC.new(key.bytes(), digestmod=SHA256)
+        h.update(content)
         try:
             h.hexverify(hmac)
             return True
