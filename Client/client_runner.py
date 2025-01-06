@@ -130,7 +130,7 @@ class ClientRunner(CommunicationService):
             Tools.varify_signature(rsa_public_key=self._server_public_key,
                                    signature=content_message.signature,
                                    hmac=content_message.hmac)
-            self._logger.error("Signature is valid.")
+            self._logger.info("Signature is valid.")
         except (ValueError, TypeError):
             self._logger.error("Signature is invalid.")
             return

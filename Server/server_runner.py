@@ -199,10 +199,14 @@ class ServerRunner(CommunicationService):
         hmac = Tools.generate_hmac(key=client_to_aes_key,
                                    content=encrypted_content.encode())
 
+        # set a new signature on hmac
+        signature = Tools.create_signature(rsa_private_key=self._private_key,hmac=hmac)
+
         # create a new message
         new_content_message = copy.deepcopy(content_message)
         new_content_message.content = encrypted_content
         new_content_message.hmac = hmac
+        new_content_message.signature = signature
 
         # if both registered send message
         self.send_msg(sock=self._uid_socket[content_message.des_uid],
