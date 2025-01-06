@@ -1,4 +1,3 @@
-import base64
 import copy
 import json
 import logging
@@ -8,10 +7,6 @@ import threading
 from datetime import datetime, timedelta
 from typing import Optional
 
-from Crypto.Hash import SHA256
-from Crypto.PublicKey import RSA
-from Crypto.Signature import pkcs1_15
-
 from Communication.Messages.messages import ClientRegistrationMessage, OptMessage, KeyMessage, ContentMessage, \
     CommunicationMessageTypesEnum
 from Communication.communication_service import CommunicationService
@@ -20,7 +15,6 @@ from Server.DB.rows import RegistrationTableRow, UserKeyTableRow
 from Tools.encryptors import EncryptorAES, EncryptorAESKey, EncryptorRSAKey, EncryptorRSA
 from Tools.tools import Tools
 from Utils.internal_logger import InternalLogger
-
 
 class ServerRunner(CommunicationService):
     _logger: InternalLogger
@@ -32,14 +26,21 @@ class ServerRunner(CommunicationService):
         self._clients: list[socket] = []
         self._uid_socket: dict[str, socket] = {}
         self._db = DataBase()
+        self._lock: threading.Lock = threading.Lock()
 
     def handle_msg_receiving(self, sock, address):
-        self._logger.info("Server handle message")
+        self._logger.info(f"Server handle message from {address}")
 
         while True:  # Continuous loop to keep receiving messages
-            raw_data = sock.recv(1024)
+            try:
+                raw_data = sock.recv(1024)
+            except OSError as e:
+                self._logger.error(f"Socket error with client {address}: {e}")
+                break
+
             if not raw_data:
                 self._logger.warning("Connection closed by the server")
+                self.cleanup_client(sock)
             else:
                 message = json.loads(raw_data)
                 message_type = message.get("type")
@@ -62,7 +63,7 @@ class ServerRunner(CommunicationService):
                     self.handle_content_message(content_message=content_message)
 
     def handle_client_registration_msg_receiving(self, client_reg_message: ClientRegistrationMessage, sock: socket):
-        self._logger.info("Received Client Registration msg")
+        self._logger.info(f"Received Client Registration msg {client_reg_message}")
         # bind the socket to the uid
         self._uid_socket[client_reg_message.uid] = sock
 
@@ -85,7 +86,7 @@ class ServerRunner(CommunicationService):
         # send to the client opt
         opt = str(random.randint(100000, 999999))
         opt_message = OptMessage(uid=client_reg_message.uid, opt=str(opt))
-        self.send_msg(sock=sock, content=opt_message.encode())
+        self.send_by_secure_channel(sock=sock, content=opt_message.encode())
 
         # update the time of the opt that sent
         registration_row.opt_time = datetime.now()
@@ -98,7 +99,7 @@ class ServerRunner(CommunicationService):
         if not registration_row:
             self._logger.error("Client not registered and sent OPT code!")
 
-        if datetime.now() - registration_row.opt_time >= timedelta(seconds=10):
+        if datetime.now() - registration_row.opt_time >= timedelta(seconds=30):
             self._logger.error("Time Limit reached for OPT,resending new opt to the client")
 
             # send to the client opt
@@ -207,9 +208,10 @@ class ServerRunner(CommunicationService):
         self.send_msg(sock=self._uid_socket[content_message.des_uid],
                       content=new_content_message.encode())
 
-    def prepare_msg_for_sending(self):
-        self._logger.info("Server preparing message")
-        pass
+    def send_by_secure_channel(self, sock: socket, content):
+        """simulate secure channel for opt sending"""
+        self._logger.info(f"Sending opt by secured channel")
+        self.send_msg(sock=sock,content=content)
 
     def send_msg(self, sock: socket, content:bytes):
         self._logger.info(f"Server sending message to {content.decode()}")
@@ -236,7 +238,7 @@ class ServerRunner(CommunicationService):
         # set host and port of the server
         host = 'localhost'
         port = 12345
-        max_connections = 5
+
 
         # create a socket object
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
@@ -248,13 +250,24 @@ class ServerRunner(CommunicationService):
 
             # accept and handle client connections
             while True:
+                self._logger.info("Wait for a new client")
                 client_socket, address = server_socket.accept()
                 self._logger.info("New connection with client")
-                self._clients.append(client_socket)
+                with self._lock:
+                    self._clients.append(client_socket)
 
                 client_handler = threading.Thread(target=self.handle_msg_receiving,
                                                   args=(client_socket, address))
+                client_handler.daemon = True # ensures thread exits when main program ends
                 client_handler.start()
+
+    def cleanup_client(self, client_socket:socket):
+        # Remove client from the list and close its socket
+        with self._lock:
+            if client_socket in self._clients:
+                self._clients.remove(client_socket)
+        client_socket.close()
+        self._logger.info("Closed Client Socket")
 
 
 if __name__ == "__main__":

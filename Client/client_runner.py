@@ -1,4 +1,3 @@
-import base64
 import json
 import logging
 import socket
@@ -6,11 +5,6 @@ import threading
 from enum import Enum
 
 from typing import Optional
-
-from Crypto.Hash import SHA256
-from Crypto.PublicKey import RSA
-from Crypto.PublicKey.RSA import RsaKey
-from Crypto.Signature import pkcs1_15
 
 from Client.client_info import ClientInfo
 from Client.client_outputs import ClientOutputsEnum
@@ -30,25 +24,32 @@ class ClientRunnerStatusEnum(str, Enum):
 
 
 class ClientRunner(CommunicationService):
+    """This class responsible to activate a new client, and run this client."""
 
     def __init__(self):
+        """Constructor."""
         self._logger: InternalLogger = InternalLogger(logging_level=logging.DEBUG)
         self.client_info: Optional[ClientInfo] = None
         self._aes_key: Optional[EncryptorAESKey] = None
         self._rsa_private_key: Optional[EncryptorRSAKey] = None
         self._rsa_public_key: Optional[EncryptorRSAKey] = None
         self._server_public_key: Optional[EncryptorRSAKey] = None
-        self._uid:str = ""
-        self._status:ClientRunnerStatusEnum = ClientRunnerStatusEnum.REGISTRATION
+        self._uid: str = ""
+        self._status: ClientRunnerStatusEnum = ClientRunnerStatusEnum.REGISTRATION
 
         # we use this attributes, in case we receive message, and message on console removed by incoming message
-        self._waiting_uid_des_input:bool = False
-        self._waiting_content_input:bool = False
+        self._waiting_uid_des_input: bool = False
+        self._waiting_content_input: bool = False
 
     def handle_msg_receiving(self, n_socket, address):
+        """Handle receiving message from the server."""
         self._logger.info("Client handle message")
         while True:  # Continuous loop to keep receiving messages
-            raw_data = n_socket.recv(1024)
+            try:
+                raw_data = n_socket.recv(1024)
+            except OSError as e:
+                self._logger.error(f"Socket error with client {address}: {e}")
+                break
             if not raw_data:
                 self._logger.warning("Connection closed by the server")
             else:
@@ -69,6 +70,7 @@ class ClientRunner(CommunicationService):
                     self.handle_content_msg(content_message=content_message)
 
     def handle_opt_msg_receiving(self, opt_message: OptMessage, n_socket: socket):
+        """Handle an OPT message that received from the server."""
         self._logger.info(f"received from server OPT = {opt_message.opt}")
         # check first that we actually waiting for opt, if not write an error
         if (self._status != ClientRunnerStatusEnum.WAIT_FOR_OPT and
@@ -78,7 +80,7 @@ class ClientRunner(CommunicationService):
 
         # prompt to the Client that received opt and need to resend it to the server
         client_opt = input(ClientOutputsEnum.RECEIVED_OPT.value.format(opt_message.opt))
-        respond_opt_message = OptMessage(uid=opt_message.uid,opt=client_opt)
+        respond_opt_message = OptMessage(uid=opt_message.uid, opt=client_opt)
 
         # change the status
         self._status = ClientRunnerStatusEnum.WAIT_FOR_SERVER_PUBLIC_KEY
@@ -87,6 +89,7 @@ class ClientRunner(CommunicationService):
         self.send_msg(n_socket, respond_opt_message.encode())
 
     def handle_key_msg_receiving(self, key_message: KeyMessage, n_socket: socket):
+        """Handle key message that received from the server."""
         self._logger.info("Received key message.")
         # check we waiting for server's public key
         if self._status != ClientRunnerStatusEnum.WAIT_FOR_SERVER_PUBLIC_KEY:
@@ -102,12 +105,13 @@ class ClientRunner(CommunicationService):
                                               content=self._aes_key.str())
 
         # message with the client's encrypted AES key
-        message_to_send = KeyMessage(uid=key_message.uid,encrypted_key=encrypted_key)
+        message_to_send = KeyMessage(uid=key_message.uid, encrypted_key=encrypted_key)
 
         self._status = ClientRunnerStatusEnum.COMPLETED_REGISTRATION
         self.send_msg(sock=n_socket, content=message_to_send.encode())
 
     def handle_content_msg(self, content_message: ContentMessage):
+        """Handle content message that received from the server."""
         self._logger.info("Received content message.")
         # check registration completed
         if self._status != ClientRunnerStatusEnum.COMPLETED_REGISTRATION:
@@ -122,11 +126,19 @@ class ClientRunner(CommunicationService):
             return
 
         # check signature
-        # todo:
+        try:
+            Tools.varify_signature(rsa_public_key=self._server_public_key,
+                                   signature=content_message.signature,
+                                   hmac=content_message.hmac)
+            self._logger.error("Signature is valid.")
+        except (ValueError, TypeError):
+            self._logger.error("Signature is invalid.")
+            return
+
 
         # decrypt the message with client's aes key
         encryptor_aes = EncryptorAES()
-        dycrypted_content = encryptor_aes.decrypt(key=self._aes_key,content=content_message.content)
+        dycrypted_content = encryptor_aes.decrypt(key=self._aes_key, content=content_message.content)
 
         print(f"""
         ====== Received Message ====
@@ -141,23 +153,24 @@ class ClientRunner(CommunicationService):
         if self._waiting_content_input:
             print(ClientOutputsEnum.CAN_SEND_MESSAGE_WRITE_CONTENT.value)
 
-    def prepare_msg_for_sending(self):
-       pass
+    def send_by_secure_channel(self,sock:socket,content):
+        self._logger.info("Sending message by secured channel.")
+        self.send_msg(sock=sock,content=content)
 
     def send_msg(self, sock: socket, content):
         try:
             # Send data
             sock.sendall(content)
         except BrokenPipeError:
-            print("Connection broken. Unable to send data.")
+            self._logger.error("Connection broken. Unable to send data.")
         except ConnectionResetError:
-            print("Connection reset by peer.")
+            self._logger.error("Connection reset by peer.")
         except socket.timeout:
-            print("Send operation timed out.")
+            self._logger.error("Send operation timed out.")
         except OSError as e:
-            print(f"OS error occurred: {e}")
+            self._logger.error(f"OS error occurred: {e}")
         except ValueError as e:
-            print(f"Value error: {e}")
+            self._logger.error(f"Value error: {e}")
 
     def connect_to_server(self, host: str, port: int, sock: socket):
         try:
@@ -192,7 +205,7 @@ class ClientRunner(CommunicationService):
         # generate client's keys
         self._rsa_private_key, self._rsa_public_key = EncryptorRSAKey.create_keys()
         self._aes_key = EncryptorAESKey.create()
-        self._logger.info(f"Aes key = {self._aes_key}")
+        self._logger.info(f"created aes key = {self._aes_key.str()}")
 
         # prompt to console
         print(ClientOutputsEnum.WELCOME.value)
@@ -219,6 +232,7 @@ class ClientRunner(CommunicationService):
 
         # start a thread that will handle message receiving
         message_thread = threading.Thread(target=self.handle_msg_receiving, args=(s, (host, port)))
+        message_thread.daemon = True # close the thread if the main thread closed.
         message_thread.start()
 
         # if we reached here, means user want start registration
@@ -235,6 +249,7 @@ class ClientRunner(CommunicationService):
             des_uid = input(ClientOutputsEnum.CAN_SEND_MESSAGE_WRITE_TO.value)
             self._waiting_uid_des_input = False
             if des_uid == 'exit':
+                s.close() # close socket
                 break
             self._waiting_content_input = True
             content = input(ClientOutputsEnum.CAN_SEND_MESSAGE_WRITE_CONTENT.value)
@@ -244,21 +259,20 @@ class ClientRunner(CommunicationService):
 
             # encrypt the content of the message
             encryptor_aes = EncryptorAES()
-            encrypted_content = encryptor_aes.encrypt(key=self._aes_key,content=content)
+            encrypted_content = encryptor_aes.encrypt(key=self._aes_key, content=content)
 
             # create hmac
-            hmac = Tools.generate_hmac(key=self._aes_key,content=encrypted_content.encode())
+            hmac = Tools.generate_hmac(key=self._aes_key, content=encrypted_content.encode())
 
             # create signature
-            signature = Tools.create_signature(rsa_private_key=self._rsa_private_key,hmac=hmac)
+            signature = Tools.create_signature(rsa_private_key=self._rsa_private_key, hmac=hmac)
 
             message = ContentMessage(uid=self._uid,
                                      des_uid=des_uid,
                                      content=encrypted_content,
                                      hmac=hmac,
                                      signature=signature)
-            self.send_msg(sock=s,content=message.encode())
-
+            self.send_msg(sock=s, content=message.encode())
 
         s.close()
 

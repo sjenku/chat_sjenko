@@ -100,6 +100,16 @@ class EncryptorRSAKey:
         public_key = key.publickey().export_key()
         return EncryptorRSAKey(private_key), EncryptorRSAKey(public_key)
 
+    @staticmethod
+    def save_key_to_file(key_data, file_path):
+        with open(file_path, "wb") as key_file:
+            key_file.write(key_data)
+
+    @staticmethod
+    def load_key_from_file(file_path):
+        with open(file_path, "rb") as key_file:
+            return key_file.read()
+
 
 class EncryptorRSA(Encryptor):
 

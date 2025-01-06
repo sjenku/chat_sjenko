@@ -18,7 +18,8 @@ class ColoredFormatter(logging.Formatter):
         record.msg = f"{log_color}{record.msg}{self.RESET}"  # Apply color to the message
         return super().format(record)
 
-
+FULL_FORMAT = "%(asctime)s - %(levelname)s - [file- %(module)s |func- %(funcName)s |line- %(lineno)d] - %(message)s"
+PRESENTATION_FORMAT = "%(levelname)s - %(message)s"
 class InternalLogger:
     def __init__(self,logging_level:int):
         # Create a logger
@@ -30,8 +31,7 @@ class InternalLogger:
         console_handler = logging.StreamHandler()
 
         # Create a custom format with colors
-        custom_format = "%(asctime)s - %(levelname)s - [file- %(module)s |func- %(funcName)s |line- %(lineno)d] - %(message)s"
-        formatter = ColoredFormatter(custom_format)
+        formatter = ColoredFormatter(PRESENTATION_FORMAT)
 
         # Attach the custom format to the handler
         console_handler.setFormatter(formatter)

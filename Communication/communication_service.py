@@ -8,7 +8,7 @@ class CommunicationService(ABC):
         pass
 
     @abstractmethod
-    def prepare_msg_for_sending(self):
+    def send_by_secure_channel(self,destination,content):
         pass
 
     @abstractmethod

@@ -29,7 +29,7 @@ class CommunicationMessage(ABC):
 
 
 class ContentMessage(CommunicationMessage):
-    """This is a Class that hold the message passed between clients and server."""
+    """This is a Class that hold the message content that passed between client to client."""
 
     def __init__(self,
                  uid: str,
@@ -51,6 +51,7 @@ class ContentMessage(CommunicationMessage):
 
 
 class ClientRegistrationMessage(CommunicationMessage):
+    """This class holds the registration data that sent to the server by the client."""
     def __init__(self,
                  uid: str,
                  public_key: str):
@@ -66,7 +67,7 @@ class ClientRegistrationMessage(CommunicationMessage):
 
 
 class KeyMessage(CommunicationMessage):
-    """Message that holds a key"""
+    """Holds a key value"""
 
     def __init__(self,uid:str ,encrypted_key: str):
         self.uid = uid
