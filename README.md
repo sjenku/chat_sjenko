@@ -1,6 +1,9 @@
 # Project Name
 Chat Sjenko
 
+## LINK FOR VIDEO PRESENTATION
+https://drive.google.com/file/d/1sdt5NnmFK-gRK2Sx3bsLANTZF5Fp0hV5/view?usp=sharing
+
 ## Overview
 This project involves a client-server communication system with encryption for secure data transfer.
 The client and server components are implemented in Python.
